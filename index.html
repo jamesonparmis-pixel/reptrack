@@ -942,16 +942,7 @@ CREATE POLICY "Anon Full Audit Logs" ON public.audit_logs FOR ALL USING (true) W
                 timerSeconds: 0,
                 timerInterval: null,
                 isTimerRunning: false,
-                exercises: [
-                    {
-                        name: 'Barbell Bench Press',
-                        sets: [
-                            { setNum: 1, weight: 80, reps: 10, completed: true },
-                            { setNum: 2, weight: 85, reps: 8, completed: true },
-                            { setNum: 3, weight: 90, reps: 6, completed: false }
-                        ]
-                    }
-                ]
+                exercises: []
             },
 
             failedLoginAttempts: parseInt(localStorage.getItem('rt_failed_attempts') || '0'),
@@ -968,7 +959,18 @@ CREATE POLICY "Anon Full Audit Logs" ON public.audit_logs FOR ALL USING (true) W
             auditSearchQuery: '',
 
             // Master exercises fetched directly from Supabase DB
-            exerciseCatalog: [],
+            exerciseCatalog: [
+                { id: 'ex1', name: 'Barbell Back Squat', category: 'Legs', equipment: 'Barbell', difficulty: 'Intermediate', notes: 'Keep neutral spine.', status: 'Approved', proposedBy: 'System Admin', approvedBy: 'System Admin' },
+                { id: 'ex2', name: 'Barbell Bench Press', category: 'Chest', equipment: 'Barbell', difficulty: 'Intermediate', notes: 'Retract scapula.', status: 'Approved', proposedBy: 'System Admin', approvedBy: 'System Admin' },
+                { id: 'ex3', name: 'Conventional Deadlift', category: 'Back', equipment: 'Barbell', difficulty: 'Advanced', notes: 'Brace core.', status: 'Approved', proposedBy: 'System Admin', approvedBy: 'System Admin' },
+                { id: 'ex4', name: 'Dumbbell Incline Press', category: 'Chest', equipment: 'Dumbbells', difficulty: 'Beginner', notes: '45-degree angle.', status: 'Approved', proposedBy: 'Coach Marcus', approvedBy: 'System Admin' },
+                { id: 'ex5', name: 'Lat Pulldown', category: 'Back', equipment: 'Cable Machine', difficulty: 'Beginner', notes: 'Pull elbows down and back.', status: 'Approved', proposedBy: 'Coach Marcus', approvedBy: 'System Admin' },
+                { id: 'ex6', name: 'Dumbbell Bicep Curls', category: 'Arms', equipment: 'Dumbbells', difficulty: 'Beginner', notes: 'Full range of motion, avoid swinging.', status: 'Approved', proposedBy: 'Coach Marcus', approvedBy: 'System Admin' },
+                { id: 'ex7', name: 'Tricep Rope Pushdown', category: 'Arms', equipment: 'Cable Machine', difficulty: 'Beginner', notes: 'Lock elbows at side.', status: 'Approved', proposedBy: 'Coach Marcus', approvedBy: 'System Admin' },
+                { id: 'ex8', name: 'Leg Press', category: 'Legs', equipment: 'Machine', difficulty: 'Beginner', notes: 'Do not lock knees at top.', status: 'Approved', proposedBy: 'Coach Marcus', approvedBy: 'System Admin' },
+                { id: 'ex9', name: 'Seated Cable Row', category: 'Back', equipment: 'Cable Machine', difficulty: 'Intermediate', notes: 'Keep chest upright, squeeze back.', status: 'Approved', proposedBy: 'Coach Marcus', approvedBy: 'System Admin' },
+                { id: 'ex10', name: 'Dumbbell Lateral Raise', category: 'Shoulders', equipment: 'Dumbbells', difficulty: 'Beginner', notes: 'Slight bend in elbows.', status: 'Approved', proposedBy: 'Coach Marcus', approvedBy: 'System Admin' }
+            ],
 
             otpState: {
                 activeContext: null,
@@ -1170,7 +1172,7 @@ CREATE POLICY "Anon Full Audit Logs" ON public.audit_logs FOR ALL USING (true) W
                 });
                 if (res.ok) {
                     const data = await res.json();
-                    if (Array.isArray(data)) {
+                    if (Array.isArray(data) && data.length > 0) {
                         state.exerciseCatalog = data.map(item => ({
                             id: item.id,
                             name: item.name,
@@ -1218,7 +1220,12 @@ CREATE POLICY "Anon Full Audit Logs" ON public.audit_logs FOR ALL USING (true) W
                                 email: p.email,
                                 recoveryEmail: p.recovery_email || p.email,
                                 passHash: passwordHash,
-                                role: (p.role || 'ATHLETE').toUpperCase(),
+                                role: (function(r) {
+                                const up = String(r || 'ATHLETE').toUpperCase().trim();
+                                if (up === 'COACH' || up === 'TRAINER' || up.includes('COACH') || up.includes('TRAINER')) return 'TRAINER';
+                                if (up.includes('ADMIN')) return 'ADMIN';
+                                return 'ATHLETE';
+                            })(p.role),
                                 isLocked: p.is_locked || false,
                                 isActive: p.is_active !== undefined ? p.is_active : true
                             };
@@ -1819,7 +1826,8 @@ CREATE POLICY "Anon Full Audit Logs" ON public.audit_logs FOR ALL USING (true) W
         }
 
         function switchRoleView(role) {
-            state.viewMode = role;
+            const normRole = (role === 'COACH' || role === 'TRAINER') ? 'TRAINER' : role;
+            state.viewMode = normRole;
 
             const athleteBtn = document.getElementById('viewMobileAthleteBtn');
             const coachBtn = document.getElementById('viewMobileCoachBtn');
@@ -1831,12 +1839,15 @@ CREATE POLICY "Anon Full Audit Logs" ON public.audit_logs FOR ALL USING (true) W
                 if (b) b.className = "py-1 px-1.5 rounded-lg text-[10px] font-medium transition flex flex-col items-center gap-0.5 text-slate-400 hover:text-white";
             });
 
-            if (role === 'ATHLETE') {
+            if (normRole === 'ATHLETE') {
                 if (athleteBtn) athleteBtn.className = "py-1 px-1.5 rounded-lg text-[10px] font-medium transition flex flex-col items-center gap-0.5 bg-blue-600 text-white";
                 mobileView.classList.remove('hidden');
                 desktopView.classList.add('hidden');
-                document.getElementById('mobileRoleIndicator').innerText = 'ATHLETE';
-                document.getElementById('mobileRoleIndicator').className = 'text-[9px] px-1.5 py-0.2 rounded bg-blue-950 text-cyan-300 font-mono font-bold';
+                const ind = document.getElementById('mobileRoleIndicator');
+                if (ind) {
+                    ind.innerText = 'ATHLETE';
+                    ind.className = 'text-[9px] px-1.5 py-0.2 rounded bg-blue-950 text-cyan-300 font-mono font-bold';
+                }
 
                 if (!state.currentUser || state.currentUser.role !== 'ATHLETE') {
                     const athleteUser = state.users.find(u => u.role === 'ATHLETE') || { id: 'u1', name: 'Jameson Perez', email: 'athlete@reptracker.com', role: 'ATHLETE' };
@@ -1844,20 +1855,23 @@ CREATE POLICY "Anon Full Audit Logs" ON public.audit_logs FOR ALL USING (true) W
                 }
                 state.mobileScreen = 'dashboard';
                 renderMobileView();
-            } else if (role === 'TRAINER') {
+            } else if (normRole === 'TRAINER') {
                 if (coachBtn) coachBtn.className = "py-1 px-1.5 rounded-lg text-[10px] font-medium transition flex flex-col items-center gap-0.5 bg-amber-600 text-white";
                 mobileView.classList.remove('hidden');
                 desktopView.classList.add('hidden');
-                document.getElementById('mobileRoleIndicator').innerText = 'COACH';
-                document.getElementById('mobileRoleIndicator').className = 'text-[9px] px-1.5 py-0.2 rounded bg-amber-950 text-amber-300 font-mono font-bold';
+                const ind = document.getElementById('mobileRoleIndicator');
+                if (ind) {
+                    ind.innerText = 'COACH';
+                    ind.className = 'text-[9px] px-1.5 py-0.2 rounded bg-amber-950 text-amber-300 font-mono font-bold';
+                }
 
-                if (!state.currentUser || state.currentUser.role !== 'TRAINER') {
-                    const coachUser = state.users.find(u => u.role === 'TRAINER') || { id: 'u2', name: 'Coach Marcus', email: 'coach@reptracker.com', role: 'TRAINER' };
+                if (!state.currentUser || (state.currentUser.role !== 'TRAINER' && state.currentUser.role !== 'COACH')) {
+                    const coachUser = state.users.find(u => u.role === 'TRAINER' || u.role === 'COACH') || { id: 'u2', name: 'Coach Marcus', email: 'coach@reptracker.com', role: 'TRAINER' };
                     state.currentUser = coachUser;
                 }
                 state.mobileScreen = 'coach_dashboard';
                 renderMobileView();
-            } else if (role === 'ADMIN') {
+            } else if (normRole === 'ADMIN') {
                 if (adminBtn) adminBtn.className = "py-1 px-1.5 rounded-lg text-[10px] font-medium transition flex flex-col items-center gap-0.5 bg-purple-600 text-white";
                 desktopView.classList.remove('hidden');
                 mobileView.classList.add('hidden');
@@ -2691,7 +2705,15 @@ CREATE POLICY "Anon Full Audit Logs" ON public.audit_logs FOR ALL USING (true) W
                 </div>
 
                 <div class="space-y-3">
-                    ${state.activeSession.exercises.map((ex, exIdx) => `
+                    ${state.activeSession.exercises.length === 0 ? `
+                        <div class="bg-slate-950/60 p-6 rounded-2xl border border-dashed border-slate-800 text-center space-y-2">
+                            <div class="w-10 h-10 rounded-full bg-slate-900 text-slate-500 flex items-center justify-center mx-auto text-sm">
+                                <i class="fa-solid fa-plus"></i>
+                            </div>
+                            <p class="text-xs font-semibold text-slate-300">No exercises added to this session yet</p>
+                            <p class="text-[10px] text-slate-500">Pick an exercise from the dropdown above or type any custom exercise and tap "+ Add".</p>
+                        </div>
+                    ` : state.activeSession.exercises.map((ex, exIdx) => `
                         <div class="bg-slate-950 p-3.5 rounded-2xl border border-slate-800 space-y-2.5">
                             <div class="flex justify-between items-center border-b border-slate-800/80 pb-2">
                                 <h4 class="text-xs font-bold text-white font-poppins">${exIdx + 1}. ${ex.name}</h4>
