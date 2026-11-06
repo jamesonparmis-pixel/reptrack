@@ -1998,7 +1998,9 @@ CREATE POLICY "Anon Full Audit Logs" ON public.audit_logs FOR ALL USING (true) W
             recordAuditLog(foundUser.email, 'LOGIN_SUCCESS', 'Auth', 'SUCCESS', `Session created as role ${foundUser.role}`);
             showToast(`Welcome back, ${foundUser.name}!`, "success");
 
-            switchRoleView(foundUser.role);
+            const normRole = (foundUser.role === 'COACH' || foundUser.role === 'TRAINER') ? 'TRAINER' : foundUser.role;
+            state.mobileScreen = (normRole === 'TRAINER') ? 'coach_dashboard' : (normRole === 'ADMIN' ? 'overview' : 'dashboard');
+            switchRoleView(normRole);
         }
 
         async function handleRegisterSubmit(e) {
@@ -2298,7 +2300,15 @@ CREATE POLICY "Anon Full Audit Logs" ON public.audit_logs FOR ALL USING (true) W
             }
 
             navBar.classList.remove('hidden');
-            const isCoachView = (state.viewMode === 'TRAINER');
+            const currentRole = (state.currentUser && state.currentUser.role) ? state.currentUser.role : state.viewMode;
+            const isCoachView = (currentRole === 'TRAINER' || currentRole === 'COACH');
+            const indicator = document.getElementById('mobileRoleIndicator');
+            if (indicator) {
+                indicator.innerText = isCoachView ? 'COACH' : (currentRole === 'ADMIN' ? 'ADMIN' : 'ATHLETE');
+                indicator.className = isCoachView
+                    ? 'text-[9px] px-1.5 py-0.2 rounded bg-amber-950 text-amber-300 font-mono font-bold'
+                    : (currentRole === 'ADMIN' ? 'text-[9px] px-1.5 py-0.2 rounded bg-purple-950 text-purple-300 font-mono font-bold' : 'text-[9px] px-1.5 py-0.2 rounded bg-blue-950 text-cyan-300 font-mono font-bold');
+            }
 
             if (isCoachView) {
                 navBar.innerHTML = `
@@ -4065,7 +4075,31 @@ CREATE POLICY "Anon Full Audit Logs" ON public.audit_logs FOR ALL USING (true) W
             await fetchSupabaseProfiles();
             await fetchSupabaseMasterExercises();
             await fetchSupabaseWorkouts();
-            switchRoleView('ATHLETE');
+            
+            // Check if there is an existing authenticated session
+            const savedEmail = localStorage.getItem('rt_session_user');
+            const savedToken = localStorage.getItem('rt_session_token');
+            if (savedEmail && savedToken) {
+                const found = state.users.find(u => u.email.toLowerCase() === savedEmail.toLowerCase());
+                if (found && !found.isLocked && found.isActive !== false) {
+                    state.currentUser = found;
+                    state.sessionToken = savedToken;
+                    resetInactivityTimer();
+                    const normRole = (found.role === 'COACH' || found.role === 'TRAINER') ? 'TRAINER' : found.role;
+                    state.mobileScreen = (normRole === 'TRAINER') ? 'coach_dashboard' : 'dashboard';
+                    switchRoleView(normRole);
+                } else {
+                    clearSessionData(false);
+                    state.currentUser = null;
+                    state.mobileScreen = 'login';
+                    renderMobileView();
+                }
+            } else {
+                state.currentUser = null;
+                state.mobileScreen = 'login';
+                renderMobileView();
+            }
+
             fetchSupabaseAuditLogs();
             recordAuditLog('system', 'APPLICATION_INITIALIZED', 'Core', 'SUCCESS', 'RepTracker Ready');
         };
